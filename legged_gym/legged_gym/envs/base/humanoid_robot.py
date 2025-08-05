@@ -136,7 +136,7 @@ class HumanoidRobot(BaseTask):
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
 
-        actions.to(self.device)
+        actions = actions.to(self.device)
         self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
         if self.cfg.domain_rand.action_delay:
             if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
@@ -569,6 +569,26 @@ class HumanoidRobot(BaseTask):
         cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
+    def save_rgb_frames(self, frame_idx: int):
+        try:
+            for env_id in range(self.num_envs):
+                rgba_gpu = self.gym.get_camera_image_gpu_tensor(
+                    self.sim,
+                    self.envs[env_id],
+                    self.cam_handles[env_id],
+                    gymapi.IMAGE_COLOR,  # ← 彩色而非深度
+                )
+
+                # 张量 → NumPy，形状 (H, W, 4) RGBA，uint8
+                rgba = gymtorch.wrap_tensor(rgba_gpu).cpu().numpy()
+
+                # 转 BGR 再写盘；OpenCV 要求通道最后
+                bgr = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGR)
+                fname = f"env{env_id:02d}_f{frame_idx:06d}.png"
+                cv2.imwrite(os.path.join(save_dir, fname), bgr)
+        finally:
+            # 3. 收回 GPU 访问权
+            self.gym.end_access_image_tensors(self.sim)
     #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.

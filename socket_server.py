@@ -8,27 +8,20 @@ from collections import OrderedDict
 from typing import Dict
 
 import numpy as np
-# TODO：参考legged_gym/legged_gym/scripts/play.py中对环境的使用，替换libero并封装为issac gym函数形式
+import cv2
 
 from legged_gym.envs import *
-from legged_gym.utils import  get_args,  task_registry
+from legged_gym.utils import get_args, task_registry
+from isaacgym import gymtorch, gymapi, gymutil
 from terrain_base.config import terrain_config
 
 import torch
 import faulthandler
 
-from libero.libero import get_libero_path
-from libero.libero.benchmark import Benchmark, get_benchmark
-from libero.libero.envs import OffScreenRenderEnv
-
-
 class Session:
-    def __init__(self, benchmark: Benchmark, task_id: int, env_kwargs):
-        self.benchmark = benchmark
-        self.task_id = task_id
+    def __init__(self, env_kwargs):
         self.env_kwargs = env_kwargs
 
-        #TODO 这里的train_cfg是否可用于test阶段
         env_cfg, train_cfg = task_registry.get_cfgs(name=env_kwargs.task)
         # override some parameters for testing
         if env_kwargs.nodelay:
@@ -58,15 +51,25 @@ class Session:
         env: HumanoidRobot
         self.env, _ = task_registry.make_env(name=env_kwargs.task, args=env_kwargs, env_cfg=env_cfg)
 
+def dict_tendor2np(t_dict: Dict):
+    for k, v in t_dict.items():
+        if isinstance(v, np.ndarray):
+            t_dict[k] = v.tolist()
+        elif isinstance(v, torch.Tensor):
+            t_dict[k] = v.detach().cpu().numpy().tolist()
+        elif isinstance(v, Dict):
+            dict_tendor2np(v)
+    return t_dict
 
-class LiberoServer:
-    def __init__(self, host='0.0.0.0', port=9999):
+class Server:
+    def __init__(self, args, host='0.0.0.0', port=9999):
         self.host = host
         self.port = port
+        self.args = args
         self.sessions: Dict[str, Session] = {}
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        
+
     def start(self):
         self.socket.bind((self.host, self.port))
         self.socket.listen(5)
@@ -88,7 +91,7 @@ class LiberoServer:
             self.socket.close()
             # Clean up any remaining sessions
             for session_id, session in list(self.sessions.items()):
-                session.env.close()
+                session.env.gym.destroy_sim(session.env.sim)
             self.sessions.clear()
 
     def receive_data(self, client_socket):
@@ -121,7 +124,7 @@ class LiberoServer:
         client_socket.sendall(msg_size + json_data)
 
     def handle_client(self, client_socket, addr):
-        
+
         # 60s timeout
         client_socket.settimeout(60.0) 
 
@@ -131,12 +134,12 @@ class LiberoServer:
                 data = self.receive_data(client_socket)
                 if data is None:
                     break
-                    
+
                 command = data.get('command')
                 if not command:
                     self.send_data(client_socket, {"error": "No command specified"})
                     continue
-                
+
                 # Process different commands
                 if command == 'create':
                     response = self.handle_create(data, addr[0])
@@ -151,6 +154,9 @@ class LiberoServer:
                 elif command == 'close':
                     session_id = data.get('session_id')
                     response = self.handle_close(session_id)
+                elif command == 'observe':
+                    session_id = data.get('session_id')
+                    response = self.handle_obs(session_id)
                 else:
                     response = {"error": f"Unknown command: {command}"}
                 
@@ -163,7 +169,7 @@ class LiberoServer:
             if session_id and session_id in self.sessions:
                 try:
                     session = self.sessions.pop(session_id)
-                    session.env.close()
+                    session.env.gym.destroy_sim(session.env.sim)
                     print(f"Session {session_id} closed due to client disconnect")
                 except:
                     pass
@@ -176,6 +182,9 @@ class LiberoServer:
                 res[k] = v.tolist() if v.ndim > 0 else v.item()
             elif isinstance(v, np.bool_):
                 res[k] = bool(v)
+            elif isinstance(v, torch.Tensor):
+                arr = v.detach().cpu().numpy()
+                res[k] = arr.tolist()
             else:
                 res[k] = v
         return res
@@ -183,41 +192,26 @@ class LiberoServer:
     def handle_create(self, data, client_ip):
         # Generate unique session ID
         session_id = str(uuid.uuid4())
-        
-        # Parse the request data
-        benchmark_name = data.get('benchmark_name', "libero_spatial")
-        if benchmark_name not in ["libero_spatial", "libero_10", "libero_object", "libero_goal"]:
-            return {"error": "Unsupported benchmark"}
-            
-        task_id = data.get('task_id')
-        if task_id is None:
-            return {"error": "task_id is required"}
-            
-        camera_width = data.get('camera_width', 128)
-        camera_height = data.get('camera_height', 128)
-        if camera_width > 512 or camera_height > 512:
-            return {"error": "camera_width and camera_height must be <= 512"}
-        
-        benchmark: Benchmark = get_benchmark(benchmark_name)()
-        task = benchmark.get_task(task_id) 
+        task = data.get('task')
+        exptid = data.get('exptid')
 
-        # Prepare environment arguments
-        task_bddl_file = os.path.join(get_libero_path("bddl_files"), task.problem_folder, task.bddl_file)
-        env_args = {
-            "bddl_file_name": task_bddl_file,
-            "camera_heights": camera_height,
-            "camera_widths": camera_width,
-        }
-        
-        self.sessions[session_id] = Session(benchmark, task_id, env_args)
+        # k
+        api_token = data.get('api_token')
+
+        self.args.exptid = exptid
+        self.args.task = task
+
+        self.sessions[session_id] = Session(self.args)
         
         print(f"Session created for {client_ip} with session ID {session_id}")
-        return {"session_id": session_id, "task_name": task.name}
+        return {"session_id": session_id, "task_name": task}
 
     def handle_close(self, session_id):
         if session_id and session_id in self.sessions:
             session = self.sessions.pop(session_id)
-            session.env.close()
+            session.env.gym.destroy_sim(session.env.sim)
+            session.env.gym.destroy_viewer(session.env.viewer)
+            session.env.viewer = None
             print(f"Session {session_id} closed")
             return {"message": "Session closed"}
         else:
@@ -228,24 +222,13 @@ class LiberoServer:
             session = self.sessions[session_id]
         else:
             return {"error": "Session not found"}
-        
-        benchmark = session.benchmark
-        task_id = session.task_id
-        task = benchmark.get_task(task_id)
+
         env = session.env
 
         env.reset()
         # Set seed for reproducibility
-        env.seed(0)
 
-        init_states = benchmark.get_task_init_states(task_id)
-        obs = env.set_init_state(init_states[0])
-        description = task.language
-
-        return {
-            "observation": self.jsonify_observation(obs),
-            "description": description,
-        }
+        return "Already reset!"
 
     def handle_step(self, session_id, action):
         if session_id and session_id in self.sessions:
@@ -260,19 +243,27 @@ class LiberoServer:
         
         try:
             action = np.array(action)
-            if action.ndim != 1 or action.shape[0] != 7:
-                return {"error": "action must be a 1D array of shape (7,)"}
-                
-            observation, reward, done, info = env.step(action)
+            if action.ndim != 2 or action.shape[1] != env.num_dofs:
+                return {f"error": "action must be a 2D array of shape (N, {env.num_dofs})"}
+            observation, _, reward, done, info = env.step(torch.from_numpy(action).detach().to(torch.float32))
+            # env_idx = session.env.lookat_id
+            # viewer_image = session.env.gym.get_camera_image_gpu_tensor(session.env.sim,
+            #                                                     session.env.envs[env_idx],
+            #                                                     session.env.cam_handles[env_idx],
+            #                                                     gymapi.IMAGE_COLOR)
+            # bgr = cv2.cvtColor(viewer_image, cv2.COLOR_RGB2BGR)
+            # cv2.imshow("Camera Frame", bgr)
+            # cv2.waitKey(0)
 
-            observation = self.jsonify_observation(observation)
+            obs_data = dict()
+            obs_data['observation'] = observation
+            obs_data = self.jsonify_observation(obs_data)
             reward = float(reward)
             done = bool(done)
-            if isinstance(info, dict):
-                info = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in info.items()}
+            info = dict_tendor2np(info)
             
             return {
-                "observation": observation,
+                "observation": obs_data,
                 "reward": reward,
                 "done": done,
                 "info": info
@@ -280,7 +271,28 @@ class LiberoServer:
         except Exception as e:
             return {"error": f"Error during step: {str(e)}"}
 
+    def handle_obs(self, session_id):
+        if session_id and session_id in self.sessions:
+            session = self.sessions[session_id]
+        else:
+            return {"error": "Session not found"}
+
+        env = session.env
+
+        try:
+            obs_data = dict()
+            obs_data['observation'] = env.get_observations()
+            obs_data = self.jsonify_observation(obs_data)
+            return {
+                "observation": obs_data,
+            }
+        except Exception as e:
+            return {"error": f"Error during step: {str(e)}"}
+
 
 if __name__ == '__main__':
-    server = LiberoServer()
+    host = "10.19.125.13"
+    port = 5555
+    args = get_args()
+    server = Server(args = args, host = host, port = port)
     server.start()

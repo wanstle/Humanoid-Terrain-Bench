@@ -7,12 +7,16 @@ from collections import OrderedDict
 from typing import Dict, Tuple
 
 import numpy as np
+import torch
 
 
 def dejsonify_observation(obs: dict):
     ret = OrderedDict()
     for k, v in obs.items():
-        ret[k] = np.array(v) if "image" in k else v
+        if "image" in k:
+            ret[k] = np.array(v)
+        elif "observation" in k:
+            ret[k] = np.array(v)
     return ret
 
 
@@ -25,30 +29,24 @@ class RemoteEnv:
     def __init__(self, 
                  server_ip: str, 
                  server_port: int,
-                 benchmark_name: str = "libero_spatial",
-                 task_id: int = 0,
-                 camera_width: int = 128,
-                 camera_height: int = 128,
-                 timeout: float = 30.0):
+                 api_token: int,
+                 timeout: float = 60.0,
+                 exptid: str = 'test',
+                 task: str =  'h1_2_fix'):
         """
         Initialize a connection to a remote LIBERO environment server.
         
         Args:
             server_ip: IP address of the server
             server_port: Port number of the server
-            benchmark_name: Name of the benchmark to use ('libero_spatial', 'libero_10', etc.)
-            task_id: Task ID to load
-            camera_width: Width of camera images
-            camera_height: Height of camera images
             timeout: Connection timeout in seconds
         """
         self.server_ip = server_ip
         self.server_port = server_port
-        self.benchmark_name = benchmark_name
-        self.task_id = task_id
-        self.camera_width = camera_width
-        self.camera_height = camera_height
+        self.exptid = exptid
+        self.task = task
         self.timeout = timeout
+        self.api_token = api_token
         
         self.socket = None
         self.session_id = None
@@ -99,10 +97,9 @@ class RemoteEnv:
         """Create a new session on the server."""
         request = {
             "command": "create",
-            "benchmark_name": self.benchmark_name,
-            "task_id": self.task_id,
-            "camera_width": self.camera_width,
-            "camera_height": self.camera_height
+            "exptid": self.exptid,
+            "task": self.task,
+            "api_token": self.api_token,
         }
         
         self._send_data(request)
@@ -111,10 +108,28 @@ class RemoteEnv:
         if "error" in response:
             raise RuntimeError(f"Failed to create session: {response['error']}")
             
-        self.session_id = response["session_id"]
+        self.session_id = response.get("session_id")
         self.task_name = response.get("task_name")
         print(f"Created session with ID: {self.session_id}")
-    
+
+    def fetch_results(self):
+        """Reset the environment and return initial observation."""
+        if not self.session_id:
+            raise RuntimeError("No active session. Create a new RemoteEnv instance.")
+
+        request = {
+            "command": "observe",
+            "session_id": self.session_id
+        }
+
+        self._send_data(request)
+        response = self._receive_data()
+
+        if "error" in response:
+            raise RuntimeError(f"Failed to fetch results: {response['error']}")
+
+        return dejsonify_observation(response["observation"])
+
     def reset(self):
         """Reset the environment and return initial observation."""
         if not self.session_id:
@@ -130,9 +145,8 @@ class RemoteEnv:
         
         if "error" in response:
             raise RuntimeError(f"Failed to reset environment: {response['error']}")
-            
-        self.description = response.get("description")
-        return dejsonify_observation(response["observation"])
+
+        return response
     
     def step(self, action: np.ndarray) -> Tuple[Dict, float, bool, Dict]:
         """
@@ -195,33 +209,26 @@ class RemoteEnv:
         self.close()
 
 
-def main():
-    import cv2
-
-    env = RemoteEnv(server_ip="localhost", server_port=9999)
-    obs = env.reset()
-   
-    cv2.imshow(
-        "Observation",
-        obs["agentview_image"].astype(np.uint8)[::-1]
-    )
-    cv2.waitKey(0)
-
+def client(server_ip, server_port, api_token):
+    env = RemoteEnv(server_ip=server_ip, server_port=server_port, api_token = api_token)
+    obs = env.fetch_results()
     done = False
     while not done:
-        # action = np.zeros(7)  # Replace with your policy
-        action = np.zeros(7)
-        action[:3] = np.random.uniform(-1, 1, size=3)  # Random action for testing
+        # 此处仅供测试
+        action = np.zeros([1,12])
+        action[:,:3] = np.random.uniform(-1, 1, size=3)  # Random action for testing
+        # 替换为实际的policy
+        # if hasattr(ppo_runner.alg, "depth_actor"):
+        #     actions = ppo_runner.alg.depth_actor(obs.detach(), hist_encoding=True, scandots_latent=depth_latent)
+        # else:
+        #     actions = policy(obs.detach(), hist_encoding=True, scandots_latent=depth_latent)
         obs, reward, done, info = env.step(action)
-
-        cv2.imshow(
-            "Observation",
-            obs["agentview_image"].astype(np.uint8)[::-1]
-        )
-        cv2.waitKey(100)
-
+        # 此处供reset测试
+        # env.reset()
     env.close()
 
-
 if __name__ == "__main__":
-    main()
+    server_ip = "10.19.125.13"
+    server_port = 5555
+    api_token = "5H3c"
+    client(server_ip, server_port, api_token)

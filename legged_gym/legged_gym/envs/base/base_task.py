@@ -215,4 +215,5 @@ class BaseTask():
                 cam_trans = torch.tensor([p.x, p.y, p.z], requires_grad=False, device=self.device)
                 look_at_pos = self.root_states[self.lookat_id, :3].clone()
                 self.lookat_vec = cam_trans - look_at_pos
+
             
