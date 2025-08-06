@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>上传成功</title>
+</head>
+<body>
+    <h2>上传成功！</h2>
+    <p>上传者：{{ username }}</p>
+    <p>文件已保存至：{{ filepath }}</p>
+    <p><a href="{{ url_for('upload') }}">继续上传</a></p>
+    <p><a href="{{ url_for('logout') }}">退出登录</a></p>
+</body>
+</html>

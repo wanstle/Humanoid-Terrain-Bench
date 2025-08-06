@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>文件上传</title>
+</head>
+<body>
+    <h2>欢迎，{{ username }}！请上传文件</h2>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <p style="color:red;">{{ messages[0] }}</p>
+      {% endif %}
+    {% endwith %}
+    <form method="POST" enctype="multipart/form-data">
+        <label>选择文件：
+            <input type="file" name="file" accept=".pt" required>
+        </label><br><br>
+         <label>选择等级：
+            <select name="robot_type" required>
+                <option value="" disabled selected>请选择</option>
+                <option value="robot_1">robot_1</option>
+                <option value="robot_2">robot_2</option>
+                <option value="robot_3">robot_3</option>
+            </select>
+        </label><br><br>
+        <button type="submit">上传</button>
+    </form>
+    <p><a href="{{ url_for('logout') }}">退出登录</a></p>
+</body>
+</html>
+
