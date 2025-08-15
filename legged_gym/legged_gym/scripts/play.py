@@ -48,18 +48,17 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
 
 def play(args):
     faulthandler.enable()
-    exptid = args.exptid
-    log_pth = "../../logs/{}/".format(args.proj_name) + args.exptid
+    log_pth = args.exptid
 
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
     if args.nodelay:
         env_cfg.domain_rand.action_delay_view = 0
 
-    env_cfg.env.num_envs = 1
+    env_cfg.env.num_envs = 20
     env_cfg.env.episode_length_s = 1000
     env_cfg.commands.resampling_time = 60
-    env_cfg.rewards.is_play = False
+    env_cfg.rewards.is_play = True
 
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 10
@@ -115,6 +114,18 @@ def play(args):
         obs, _, rews, dones, infos = env.step(actions.detach())
         
         id = env.lookat_id
+
+        times = env.total_times
+        if(times ==100):
+
+            print("total_times=",env.total_times)
+            print("success_rate=",env.success_times / env.total_times)
+            print("complete_rate=",(env.complete_times / env.total_times).cpu().numpy().copy())
+            total_times = env.total_times
+            success_rate = env.success_times / env.total_times
+            complete_rate = (env.complete_times / env.total_times).cpu().numpy().copy()
+            return total_times, success_rate, complete_rate
+            # break
         
 
 if __name__ == '__main__':
@@ -122,4 +133,5 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     args = get_args()
-    play(args)
+    print(play(args))
+

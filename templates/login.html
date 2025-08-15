@@ -5,16 +5,15 @@
     <title>登录</title>
 </head>
 <body>
-    <h2>用户登录</h2>
+    <h2>api token</h2>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <p style="color:red;">{{ messages[0] }}</p>
       {% endif %}
     {% endwith %}
     <form method="POST">
-        <label>用户名：<input type="text" name="username" required></label><br>
-        <label>密码（占位）：<input type="password" name="password"></label><br>
-        <button type="submit">登录</button>
+        <label>api token：<input type="text" name="api_token" required></label><br>
+        <button type="submit">确认</button>
     </form>
 </body>
 </html>

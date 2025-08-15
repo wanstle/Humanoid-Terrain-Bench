@@ -3,35 +3,35 @@ import time
 from legged_gym.envs import *
 from legged_gym.utils import  get_args,  task_registry
 from terrain_base.config import terrain_config
+import requests
 
 import torch
 import faulthandler
 
-def evaluate(file_path: str, user_token: str, robot_type: str) -> None:
+DB_URL = "http://10.15.88.88:8001/api/submit_metrics"
+def evaluate(file_path: str, api_token: str, robot_type: str) -> None:
     file_path = Path(file_path)           # ← 已是绝对路径
 
     faulthandler.enable()
     args = get_args()
-    args.exptid = 'test'
-
+    args.headless = True
+    # args.exptid = 'test'
     # robot_type可能是这里
     args.task = 'h1_2_fix'
 
     exptid = args.exptid
 
-    # 这里我们用test路径下的模型
     log_pth = file_path.parent
-    # log_pth = "./legged_gym/logs/{}/".format(args.proj_name) + args.exptid
 
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
     if args.nodelay:
         env_cfg.domain_rand.action_delay_view = 0
 
-    env_cfg.env.num_envs = 1
+    env_cfg.env.num_envs = 20
     env_cfg.env.episode_length_s = 1000
     env_cfg.commands.resampling_time = 60
-    env_cfg.rewards.is_play = False
+    env_cfg.rewards.is_play = True
 
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 10
@@ -89,4 +89,45 @@ def evaluate(file_path: str, user_token: str, robot_type: str) -> None:
 
         id = env.lookat_id
 
-    print(f"[Task] done: {file_path} by {user_token}")
+        times = env.total_times
+        if (times == 100):
+            print("total_times=", env.total_times)
+            print("success_rate=", env.success_times / env.total_times)
+            print("complete_rate=",  (env.complete_times / env.total_times).cpu().numpy().copy().item())
+            complete_rate = (env.complete_times / env.total_times).cpu().numpy().copy().item()
+            success_rate = (env.success_times / env.total_times)
+            break
+
+    data = {
+        "token": api_token,
+        "metric1": success_rate * 100,
+        "metric2": complete_rate * 100,
+        "track": 'wheeled'
+    }
+    import json
+    try:
+        # Add timeout and verify the response
+        response = requests.post(
+            DB_URL,
+            json=data,
+            timeout=10  # 10 seconds timeout
+        )
+
+        # Check if the request was successful
+        response.raise_for_status()
+
+        try:
+            # Try to parse JSON only if there's content
+            if response.content:
+                print(response.json())
+            else:
+                print("Empty response received from server")
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse JSON response: {e}")
+            print(f"Response content: {response.text}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        # You might want to retry or handle the failure differently here
+
+    print(f"[Task] done: {file_path} by {api_token}")

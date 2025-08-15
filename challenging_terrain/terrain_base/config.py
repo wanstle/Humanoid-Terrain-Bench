@@ -1,4 +1,5 @@
 class terrain_config:
+        mesh_type = "terrain"
         max_error = 0.1 # for fast
         max_error_camera = 2
 
