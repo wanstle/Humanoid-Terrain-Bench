@@ -1,0 +1,31 @@
+Importing module 'gym_38' (/home/dell/w/client/IsaacGym_Preview_4_Package/isaacgym/python/isaacgym/_bindings/linux-x86_64/gym_38.so)
+Setting GYM_USD_PLUG_INFO_PATH to /home/dell/w/client/IsaacGym_Preview_4_Package/isaacgym/python/isaacgym/_bindings/linux-x86_64/usd/plugInfo.json
+PyTorch version 2.4.1+cu118
+Device count 1
+/home/dell/w/client/IsaacGym_Preview_4_Package/isaacgym/python/isaacgym/_bindings/src/gymtorch
+ninja: no work to do.
+Setting seed: 1
+Not connected to PVD
++++ Using GPU PhysX
+Physics Engine: PhysX
+Physics Device: cuda:0
+GPU Pipeline: enabled
+********************************************************************************
+Created 1700000 vertices
+Created 3394602 triangles
+Adding trimesh to simulation...
+Trimesh added
+Finished creating ground. Time taken 4.58 s
+********************************************************************************
+Creating env...
+'train_cfg' provided -> Ignoring 'name=h1_2_fix'
+Using MLP and Priviliged Env encoder ActorCritic structure
+ActorCritic.__init__ got unexpected arguments, which will be ignored: ['continue_from_last_std', 'priv_encoder_dims', 'rnn_hidden_size', 'rnn_num_layers', 'rnn_type', 'tanh_encoder_output']
+/home/dell/w/client/Humanoid-Terrain-Bench/uploaded_files/452/20250815-134145
+-1
+********************************************************************************
+Loading model from /home/dell/w/client/Humanoid-Terrain-Bench/uploaded_files/452/20250815-134145/model_50000.pt...
+********************************************************************************
+total_times= 100
+success_rate= 0.31
+complete_rate= 0.311
