@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>文件上传</title>
+</head>
+<body>
+    <h2>欢迎！请上传文件</h2>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <p style="color:red;">{{ messages[0] }}</p>
+      {% endif %}
+    {% endwith %}
+    <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+        <label>访问令牌（token）：
+          <input type="text" name="token" placeholder="请输入有效 token" required>
+        </label><br><br>
+        <label>选择文件：
+            <input type="file" name="file" accept=".pt" required>
+        </label><br><br>
+         <label>选择机器人类别：
+            <select name="robot_type" required>
+                <option value="" disabled selected>请选择</option>
+                <option value="robot_1">robot_1</option>
+                <option value="robot_2">robot_2</option>
+                <option value="robot_3">robot_3</option>
+            </select>
+        </label><br><br>
+        <button type="submit">上传</button>
+    </form>
+</body>
+</html>
+
